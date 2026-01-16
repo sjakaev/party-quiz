@@ -90,28 +90,42 @@ document.addEventListener('DOMContentLoaded', () => {
     const roomFromUrl = urlParams.get('room');
     const dataFromUrl = urlParams.get('data');
 
+    console.log('URL params - room:', roomFromUrl, 'data length:', dataFromUrl ? dataFromUrl.length : 0);
+
     // Если есть код комнаты в URL - установить глобальную переменную
     if (roomFromUrl) {
         roomCode = roomFromUrl.toLowerCase();
         elements.roomCodeInput.value = roomCode;
+        console.log('roomCode set to:', roomCode);
     }
 
     // Если есть данные в URL - загрузить их
     if (dataFromUrl) {
         try {
             const decoded = JSON.parse(decodeURIComponent(escape(atob(dataFromUrl))));
+            console.log('Decoded data:', decoded);
             // Используем roomCode из URL или из decoded данных
             const targetRoom = roomCode || decoded.roomCode;
             localStorage.setItem(`quiz_${targetRoom}`, JSON.stringify(decoded));
             console.log('Room data saved for:', targetRoom);
+
+            // Проверим что сохранилось
+            const check = localStorage.getItem(`quiz_${targetRoom}`);
+            console.log('Verification - data exists:', !!check);
         } catch (e) {
             console.error('Failed to decode URL data', e);
+            alert('Ошибка декодирования данных: ' + e.message);
         }
+    } else if (roomFromUrl) {
+        console.log('No data in URL, only room code');
     }
 
-    if (roomFromUrl) {
-        // Небольшая задержка чтобы localStorage точно записался
-        setTimeout(() => startAsPlayer(), 100);
+    if (roomFromUrl && dataFromUrl) {
+        // Автоматически запустить как участник только если есть данные
+        setTimeout(() => {
+            console.log('Auto-starting as player...');
+            startAsPlayer();
+        }, 100);
     }
 
     // Event listeners
@@ -275,6 +289,8 @@ function startHostPolling() {
 
 async function startAsPlayer() {
     roomCode = elements.roomCodeInput.value.trim().toLowerCase();
+    console.log('startAsPlayer - roomCode:', roomCode);
+
     if (!roomCode) {
         alert('Введите код комнаты');
         return;
@@ -282,8 +298,11 @@ async function startAsPlayer() {
 
     isHost = false;
     const roomData = getRoomData();
+    console.log('startAsPlayer - roomData:', roomData);
 
     if (!roomData || !roomData.questions) {
+        console.log('Room not found. localStorage key: quiz_' + roomCode);
+        console.log('All localStorage keys:', Object.keys(localStorage));
         alert('Комната не найдена. Убедитесь что ведущий создал комнату.');
         return;
     }
