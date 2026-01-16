@@ -6,20 +6,29 @@
     <title>Party Quiz - Викторина для вечеринки</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
     <div id="app">
         <!-- Экран настройки -->
         <div id="setup-screen" class="screen active">
             <h1>🎉 Party Quiz</h1>
-            <p>Введите ID вашей Google таблицы:</p>
-            <input type="text" id="sheet-id" placeholder="ID таблицы из URL">
-            <div class="help-text">
-                ID находится в URL таблицы:<br>
-                docs.google.com/spreadsheets/d/<strong>ВАШ_ID</strong>/edit
+            <div class="room-setup">
+                <input type="text" id="room-code" placeholder="Код комнаты (любой)" maxlength="10">
+                <div class="help-text">Придумайте код для вашей вечеринки (например: anton2024)</div>
             </div>
             <button id="start-host" class="btn primary">Режим ведущего (проектор)</button>
             <button id="start-player" class="btn secondary">Режим участника (телефон)</button>
+        </div>
+
+        <!-- Экран редактирования вопросов (для ведущего) -->
+        <div id="edit-screen" class="screen">
+            <h1>Настройка вопросов</h1>
+            <div id="questions-list"></div>
+            <button id="add-question" class="btn secondary">+ Добавить вопрос</button>
+            <button id="save-and-start" class="btn primary big">Сохранить и начать</button>
         </div>
 
         <!-- Экран ведущего -->
@@ -28,6 +37,7 @@
                 <h1>Ожидание участников</h1>
                 <div id="qr-code"></div>
                 <p class="qr-hint">Отсканируйте QR-код для участия</p>
+                <p class="room-info">Комната: <span id="room-display"></span></p>
                 <div class="players-count">
                     Подключено: <span id="players-online">0</span>
                 </div>
@@ -64,11 +74,11 @@
                     <div id="correct-answer"></div>
                     <div class="final-stats">
                         <div class="stat">
-                            <span class="stat-label" id="winner-label">Победитель:</span>
+                            <span class="stat-label">Правильный ответ:</span>
                             <span class="stat-value" id="winner-name"></span>
                         </div>
                         <div class="stat">
-                            <span class="stat-label">Голоса:</span>
+                            <span class="stat-label">Угадали:</span>
                             <span class="stat-value" id="final-votes"></span>
                         </div>
                     </div>
@@ -88,6 +98,7 @@
         <div id="player-screen" class="screen">
             <div id="player-waiting" class="player-state active">
                 <h1>📱 Вы подключены!</h1>
+                <p>Комната: <span id="player-room-display"></span></p>
                 <p>Ожидайте начала викторины...</p>
                 <div class="loader"></div>
             </div>
@@ -114,8 +125,6 @@
         </div>
     </div>
 
-    <script src="config.js"></script>
-    <script src="sheets-api.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

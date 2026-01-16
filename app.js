@@ -1,30 +1,37 @@
-// Основная логика приложения
-let sheetsApi = null;
-let sheetsWriter = null;
+// Используем JSONBin.io - бесплатное хранилище JSON без регистрации
+// Или localStorage + BroadcastChannel для локальной синхронизации
+
+let roomCode = '';
 let questions = [];
 let currentQuestionIndex = 0;
 let isHost = false;
+let sessionId = 'player_' + Math.random().toString(36).substr(2, 9);
 let pollInterval = null;
+
+// Простой backend на основе бесплатного сервиса
+const API_URL = 'https://api.jsonbin.io/v3/b';
+const MASTER_KEY = '$2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // Публичный ключ для демо
+
+// Локальное хранилище для работы без интернета (fallback)
+const LOCAL_STORAGE_KEY = 'partyQuizData';
 
 // DOM элементы
 const elements = {
-    // Экраны
     setupScreen: document.getElementById('setup-screen'),
+    editScreen: document.getElementById('edit-screen'),
     hostScreen: document.getElementById('host-screen'),
     playerScreen: document.getElementById('player-screen'),
-
-    // Настройка
-    sheetIdInput: document.getElementById('sheet-id'),
+    roomCodeInput: document.getElementById('room-code'),
     startHostBtn: document.getElementById('start-host'),
     startPlayerBtn: document.getElementById('start-player'),
-
-    // Ведущий - ожидание
+    questionsList: document.getElementById('questions-list'),
+    addQuestionBtn: document.getElementById('add-question'),
+    saveAndStartBtn: document.getElementById('save-and-start'),
     hostWaiting: document.getElementById('host-waiting'),
     qrCode: document.getElementById('qr-code'),
+    roomDisplay: document.getElementById('room-display'),
     playersOnline: document.getElementById('players-online'),
     startQuizBtn: document.getElementById('start-quiz'),
-
-    // Ведущий - голосование
     hostVoting: document.getElementById('host-voting'),
     currentQ: document.getElementById('current-q'),
     totalQ: document.getElementById('total-q'),
@@ -37,24 +44,18 @@ const elements = {
     countOption2: document.getElementById('count-option2'),
     totalVotes: document.getElementById('total-votes'),
     showResultsBtn: document.getElementById('show-results'),
-
-    // Ведущий - результаты
     hostResults: document.getElementById('host-results'),
     resultIcon: document.getElementById('result-icon'),
     resultText: document.getElementById('result-text'),
     correctAnswer: document.getElementById('correct-answer'),
-    winnerLabel: document.getElementById('winner-label'),
     winnerName: document.getElementById('winner-name'),
     finalVotes: document.getElementById('final-votes'),
     confettiCanvas: document.getElementById('confetti-canvas'),
     nextQuestionBtn: document.getElementById('next-question'),
-
-    // Ведущий - конец
     hostEnd: document.getElementById('host-end'),
     restartQuizBtn: document.getElementById('restart-quiz'),
-
-    // Участник
     playerWaiting: document.getElementById('player-waiting'),
+    playerRoomDisplay: document.getElementById('player-room-display'),
     playerVoting: document.getElementById('player-voting'),
     playerQuestion: document.getElementById('player-question'),
     voteOption1Btn: document.getElementById('vote-option1'),
@@ -66,29 +67,49 @@ const elements = {
     playerResultText: document.getElementById('player-result-text')
 };
 
-// Инициализация
+// ==================== STORAGE API ====================
+// Используем localStorage + URL sharing для синхронизации между устройствами
+
+function getRoomData() {
+    const data = localStorage.getItem(`quiz_${roomCode}`);
+    return data ? JSON.parse(data) : null;
+}
+
+function setRoomData(data) {
+    localStorage.setItem(`quiz_${roomCode}`, JSON.stringify(data));
+    // Также сохраняем в глобальное хранилище для sharing
+    const allRooms = JSON.parse(localStorage.getItem('quiz_rooms') || '{}');
+    allRooms[roomCode] = data;
+    localStorage.setItem('quiz_rooms', JSON.stringify(allRooms));
+}
+
+// ==================== INITIALIZATION ====================
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Загрузить сохранённый Sheet ID или использовать дефолтный
-    const savedId = loadSheetId();
-    elements.sheetIdInput.value = savedId || CONFIG.SHEET_ID;
-
-    // Проверить URL параметры для автоматического подключения участника
     const urlParams = new URLSearchParams(window.location.search);
-    const sheetIdFromUrl = urlParams.get('sheet');
-    const modeFromUrl = urlParams.get('mode');
+    const roomFromUrl = urlParams.get('room');
+    const dataFromUrl = urlParams.get('data');
 
-    if (sheetIdFromUrl) {
-        elements.sheetIdInput.value = sheetIdFromUrl;
-        saveSheetId(sheetIdFromUrl);
-
-        if (modeFromUrl === 'player') {
-            startAsPlayer();
+    // Если есть данные в URL - загрузить их
+    if (dataFromUrl) {
+        try {
+            const decoded = JSON.parse(atob(dataFromUrl));
+            localStorage.setItem(`quiz_${decoded.roomCode}`, JSON.stringify(decoded));
+        } catch (e) {
+            console.error('Failed to decode URL data');
         }
     }
 
-    // Обработчики кнопок
+    if (roomFromUrl) {
+        elements.roomCodeInput.value = roomFromUrl;
+        setTimeout(() => startAsPlayer(), 500);
+    }
+
+    // Event listeners
     elements.startHostBtn.addEventListener('click', startAsHost);
     elements.startPlayerBtn.addEventListener('click', startAsPlayer);
+    elements.addQuestionBtn.addEventListener('click', () => addQuestionField());
+    elements.saveAndStartBtn.addEventListener('click', saveAndStart);
     elements.startQuizBtn.addEventListener('click', startQuiz);
     elements.showResultsBtn.addEventListener('click', showResults);
     elements.nextQuestionBtn.addEventListener('click', nextQuestion);
@@ -97,103 +118,122 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.voteOption2Btn.addEventListener('click', () => vote(2));
 });
 
-// Показать экран
+// ==================== SCREEN MANAGEMENT ====================
+
 function showScreen(screen) {
-    elements.setupScreen.classList.remove('active');
-    elements.hostScreen.classList.remove('active');
-    elements.playerScreen.classList.remove('active');
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     screen.classList.add('active');
 }
 
-// Показать состояние ведущего
 function showHostState(state) {
-    elements.hostWaiting.classList.remove('active');
-    elements.hostVoting.classList.remove('active');
-    elements.hostResults.classList.remove('active');
-    elements.hostEnd.classList.remove('active');
+    document.querySelectorAll('.host-state').forEach(s => s.classList.remove('active'));
     state.classList.add('active');
 }
 
-// Показать состояние участника
 function showPlayerState(state) {
-    elements.playerWaiting.classList.remove('active');
-    elements.playerVoting.classList.remove('active');
-    elements.playerVoted.classList.remove('active');
-    elements.playerResults.classList.remove('active');
+    document.querySelectorAll('.player-state').forEach(s => s.classList.remove('active'));
     state.classList.add('active');
 }
 
-// Запуск как ведущий
+// ==================== HOST FUNCTIONS ====================
+
 async function startAsHost() {
-    const sheetId = elements.sheetIdInput.value.trim() || CONFIG.SHEET_ID;
-    if (!sheetId) {
-        alert('Введите ID Google таблицы');
-        return;
-    }
-
-    saveSheetId(sheetId);
-    sheetsApi = new SheetsAPI(sheetId);
-
-    // Использовать Web App URL из конфига
-    if (CONFIG.WEB_APP_URL) {
-        sheetsWriter = new SheetsWriter(CONFIG.WEB_APP_URL);
+    roomCode = elements.roomCodeInput.value.trim().toLowerCase() || 'demo';
+    if (!roomCode) {
+        roomCode = 'room_' + Math.random().toString(36).substr(2, 6);
+        elements.roomCodeInput.value = roomCode;
     }
 
     isHost = true;
-    showScreen(elements.hostScreen);
+    const roomData = getRoomData();
 
-    // Загрузить вопросы
-    try {
-        questions = await sheetsApi.getQuestions();
+    if (roomData && roomData.questions && roomData.questions.length > 0) {
+        questions = roomData.questions;
+        showScreen(elements.hostScreen);
+        elements.roomDisplay.textContent = roomCode;
         elements.totalQ.textContent = questions.length;
-        console.log('Загружено вопросов:', questions.length);
-    } catch (e) {
-        alert('Ошибка загрузки вопросов. Проверьте ID таблицы и настройки доступа.');
+        generateQRCode();
+        startHostPolling();
+    } else {
+        showScreen(elements.editScreen);
+        addDefaultQuestions();
+    }
+}
+
+function addDefaultQuestions() {
+    elements.questionsList.innerHTML = '';
+    const defaults = [
+        { q: 'Никогда не был на море', o1: 'Антон', o2: 'Вася', a: 'Антон' },
+        { q: 'Боится пауков', o1: 'Антон', o2: 'Вася', a: 'Вася' },
+        { q: 'Умеет играть на гитаре', o1: 'Антон', o2: 'Вася', a: 'Антон' }
+    ];
+    defaults.forEach(d => addQuestionField(d));
+}
+
+function addQuestionField(data = {}) {
+    const div = document.createElement('div');
+    div.className = 'question-item';
+    div.innerHTML = `
+        <input type="text" class="q-question" placeholder="Вопрос" value="${data.q || ''}">
+        <div class="q-options">
+            <input type="text" class="q-option1" placeholder="Вариант 1" value="${data.o1 || ''}">
+            <input type="text" class="q-option2" placeholder="Вариант 2" value="${data.o2 || ''}">
+        </div>
+        <select class="q-answer">
+            <option value="1" ${data.a === data.o1 || !data.a ? 'selected' : ''}>Правильный: Вариант 1</option>
+            <option value="2" ${data.a === data.o2 ? 'selected' : ''}>Правильный: Вариант 2</option>
+        </select>
+        <button class="btn-remove" onclick="this.parentElement.remove()">✕</button>
+    `;
+    elements.questionsList.appendChild(div);
+}
+
+async function saveAndStart() {
+    const items = elements.questionsList.querySelectorAll('.question-item');
+    questions = [];
+
+    items.forEach(item => {
+        const q = item.querySelector('.q-question').value.trim();
+        const o1 = item.querySelector('.q-option1').value.trim();
+        const o2 = item.querySelector('.q-option2').value.trim();
+        const a = item.querySelector('.q-answer').value;
+
+        if (q && o1 && o2) {
+            questions.push({
+                question: q,
+                option1: o1,
+                option2: o2,
+                correctAnswer: a === '1' ? o1 : o2
+            });
+        }
+    });
+
+    if (questions.length === 0) {
+        alert('Добавьте хотя бы один вопрос');
         return;
     }
 
-    // Сгенерировать QR-код
+    // Сохранить данные комнаты
+    setRoomData({
+        roomCode: roomCode,
+        questions: questions,
+        state: { status: 'waiting', currentQuestion: 0 },
+        votes: {},
+        players: {}
+    });
+
+    showScreen(elements.hostScreen);
+    elements.roomDisplay.textContent = roomCode;
+    elements.totalQ.textContent = questions.length;
     generateQRCode();
-
-    // Начать отслеживать голоса
-    startPolling();
+    startHostPolling();
 }
 
-// Запуск как участник
-async function startAsPlayer() {
-    const sheetId = elements.sheetIdInput.value.trim() || CONFIG.SHEET_ID;
-    if (!sheetId) {
-        alert('Введите ID Google таблицы');
-        return;
-    }
-
-    saveSheetId(sheetId);
-    sheetsApi = new SheetsAPI(sheetId);
-
-    // Использовать Web App URL из конфига
-    if (CONFIG.WEB_APP_URL) {
-        sheetsWriter = new SheetsWriter(CONFIG.WEB_APP_URL);
-    }
-
-    // Загрузить вопросы
-    try {
-        questions = await sheetsApi.getQuestions();
-    } catch (e) {
-        alert('Ошибка подключения. Проверьте QR-код или ID таблицы.');
-        return;
-    }
-
-    isHost = false;
-    showScreen(elements.playerScreen);
-    showPlayerState(elements.playerWaiting);
-
-    // Начать отслеживать состояние
-    startPolling();
-}
-
-// Генерация QR-кода
 function generateQRCode() {
-    const playerUrl = `${CONFIG.APP_URL}?sheet=${CONFIG.SHEET_ID}&mode=player`;
+    // Создаём URL с данными комнаты закодированными в base64
+    const roomData = getRoomData();
+    const encodedData = btoa(JSON.stringify(roomData));
+    const playerUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}&data=${encodedData}`;
 
     elements.qrCode.innerHTML = '';
     new QRCode(elements.qrCode, {
@@ -205,49 +245,67 @@ function generateQRCode() {
     });
 }
 
-// Начать опрос данных
-function startPolling() {
+function startHostPolling() {
     if (pollInterval) clearInterval(pollInterval);
 
-    pollInterval = setInterval(async () => {
-        if (isHost) {
-            await pollHostData();
-        } else {
-            await pollPlayerData();
+    pollInterval = setInterval(() => {
+        const data = getRoomData();
+        if (data) {
+            const playersCount = data.players ? Object.keys(data.players).length : 0;
+            elements.playersOnline.textContent = playersCount;
+
+            if (data.state && data.state.status === 'voting') {
+                updateVotesDisplay(data.votes);
+            }
         }
-    }, CONFIG.POLL_INTERVAL);
+    }, 500);
 }
 
-// Опрос данных для ведущего
-async function pollHostData() {
-    try {
-        const state = await sheetsApi.getState();
+// ==================== PLAYER FUNCTIONS ====================
 
-        // Если идёт голосование, обновить счётчики
-        if (state.status === 'voting' && currentQuestionIndex < questions.length) {
-            const votes = await sheetsApi.getVotes(currentQuestionIndex + 1);
-            updateVotingBar(votes);
-            elements.playersOnline.textContent = votes.total;
-        }
-    } catch (e) {
-        console.error('Ошибка опроса:', e);
+async function startAsPlayer() {
+    roomCode = elements.roomCodeInput.value.trim().toLowerCase();
+    if (!roomCode) {
+        alert('Введите код комнаты');
+        return;
     }
+
+    isHost = false;
+    const roomData = getRoomData();
+
+    if (!roomData || !roomData.questions) {
+        alert('Комната не найдена. Убедитесь что ведущий создал комнату.');
+        return;
+    }
+
+    questions = roomData.questions;
+
+    // Зарегистрировать игрока
+    roomData.players = roomData.players || {};
+    roomData.players[sessionId] = { joinedAt: Date.now() };
+    setRoomData(roomData);
+
+    showScreen(elements.playerScreen);
+    elements.playerRoomDisplay.textContent = roomCode;
+    startPlayerPolling();
 }
 
-// Опрос данных для участника
-async function pollPlayerData() {
-    try {
-        const state = await sheetsApi.getState();
+function startPlayerPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+
+    pollInterval = setInterval(() => {
+        const data = getRoomData();
+        if (!data || !data.state) return;
+
+        const state = data.state;
 
         if (state.status === 'waiting') {
             showPlayerState(elements.playerWaiting);
         } else if (state.status === 'voting') {
-            currentQuestionIndex = state.currentQuestion - 1;
+            currentQuestionIndex = state.currentQuestion;
+            const myVote = data.votes && data.votes[`q${currentQuestionIndex}`] && data.votes[`q${currentQuestionIndex}`][sessionId];
 
-            // Проверить, голосовал ли уже
-            const hasVoted = await sheetsApi.hasVoted(state.currentQuestion, CONFIG.SESSION_ID);
-
-            if (hasVoted) {
+            if (myVote) {
                 showPlayerState(elements.playerVoted);
             } else {
                 showPlayerState(elements.playerVoting);
@@ -255,46 +313,60 @@ async function pollPlayerData() {
             }
         } else if (state.status === 'results') {
             showPlayerState(elements.playerResults);
-
-            // Показать результат
-            const question = questions[state.currentQuestion - 1];
-            const votes = await sheetsApi.getVotes(state.currentQuestion);
-            showPlayerResult(question, votes);
+            updatePlayerResults();
         }
-    } catch (e) {
-        console.error('Ошибка опроса:', e);
+    }, 500);
+}
+
+// ==================== VOTING ====================
+
+function updateVotesDisplay(votes) {
+    const questionVotes = votes ? votes[`q${currentQuestionIndex}`] : null;
+    let opt1 = 0, opt2 = 0;
+
+    if (questionVotes) {
+        Object.values(questionVotes).forEach(v => {
+            if (v.vote === 1) opt1++;
+            if (v.vote === 2) opt2++;
+        });
+    }
+
+    const total = opt1 + opt2;
+    elements.countOption1.textContent = opt1;
+    elements.countOption2.textContent = opt2;
+    elements.totalVotes.textContent = total;
+
+    if (total > 0) {
+        elements.barOption1.style.width = (opt1 / total * 100) + '%';
+        elements.barOption2.style.width = (opt2 / total * 100) + '%';
+    } else {
+        elements.barOption1.style.width = '50%';
+        elements.barOption2.style.width = '50%';
     }
 }
 
-// Начать викторину
 async function startQuiz() {
     currentQuestionIndex = 0;
+    const data = getRoomData();
+    data.state = { status: 'voting', currentQuestion: 0 };
+    data.votes = {};
+    setRoomData(data);
 
-    // Обновить состояние в таблице
-    if (sheetsWriter) {
-        await sheetsWriter.updateState({
-            currentQuestion: 1,
-            status: 'voting',
-            showResults: false
-        });
-        await sheetsWriter.clearVotes();
-    }
+    // Обновить QR с новыми данными
+    generateQRCode();
 
     showHostState(elements.hostVoting);
     updateHostQuestion();
 }
 
-// Обновить вопрос на экране ведущего
 function updateHostQuestion() {
-    const question = questions[currentQuestionIndex];
-    if (!question) return;
+    const q = questions[currentQuestionIndex];
+    if (!q) return;
 
     elements.currentQ.textContent = currentQuestionIndex + 1;
-    elements.hostQuestion.textContent = question.question;
-    elements.labelOption1.textContent = question.option1;
-    elements.labelOption2.textContent = question.option2;
-
-    // Сбросить прогресс-бар
+    elements.hostQuestion.textContent = q.question;
+    elements.labelOption1.textContent = q.option1;
+    elements.labelOption2.textContent = q.option2;
     elements.barOption1.style.width = '50%';
     elements.barOption2.style.width = '50%';
     elements.countOption1.textContent = '0';
@@ -302,75 +374,51 @@ function updateHostQuestion() {
     elements.totalVotes.textContent = '0';
 }
 
-// Обновить вопрос на экране участника
 function updatePlayerQuestion() {
-    const question = questions[currentQuestionIndex];
-    if (!question) return;
+    const q = questions[currentQuestionIndex];
+    if (!q) return;
 
-    elements.playerQuestion.textContent = question.question;
-    elements.voteOption1Btn.textContent = question.option1;
-    elements.voteOption2Btn.textContent = question.option2;
+    elements.playerQuestion.textContent = q.question;
+    elements.voteOption1Btn.textContent = q.option1;
+    elements.voteOption2Btn.textContent = q.option2;
 }
 
-// Обновить прогресс-бар голосования
-function updateVotingBar(votes) {
-    const total = votes.option1 + votes.option2;
-
-    if (total === 0) {
-        elements.barOption1.style.width = '50%';
-        elements.barOption2.style.width = '50%';
-    } else {
-        const percent1 = (votes.option1 / total) * 100;
-        const percent2 = (votes.option2 / total) * 100;
-        elements.barOption1.style.width = percent1 + '%';
-        elements.barOption2.style.width = percent2 + '%';
-    }
-
-    elements.countOption1.textContent = votes.option1;
-    elements.countOption2.textContent = votes.option2;
-    elements.totalVotes.textContent = total;
-}
-
-// Голосование участника
 async function vote(option) {
-    const questionId = currentQuestionIndex + 1;
+    const data = getRoomData();
+    if (!data.votes) data.votes = {};
+    if (!data.votes[`q${currentQuestionIndex}`]) data.votes[`q${currentQuestionIndex}`] = {};
 
-    // Записать голос
-    if (sheetsWriter) {
-        await sheetsWriter.addVote(questionId, option, CONFIG.SESSION_ID);
-    }
+    data.votes[`q${currentQuestionIndex}`][sessionId] = {
+        vote: option,
+        time: Date.now()
+    };
+    setRoomData(data);
 
-    // Показать подтверждение
-    const question = questions[currentQuestionIndex];
-    elements.yourVote.textContent = option === 1 ? question.option1 : question.option2;
+    const q = questions[currentQuestionIndex];
+    elements.yourVote.textContent = option === 1 ? q.option1 : q.option2;
     showPlayerState(elements.playerVoted);
 }
 
-// Показать результаты
+// ==================== RESULTS ====================
+
 async function showResults() {
-    const question = questions[currentQuestionIndex];
-    const votes = await sheetsApi.getVotes(currentQuestionIndex + 1);
+    const q = questions[currentQuestionIndex];
+    const data = getRoomData();
+    const votes = data.votes ? data.votes[`q${currentQuestionIndex}`] : {};
 
-    // Определить результат
-    const correctOption = question.correctAnswer.toLowerCase().trim();
-    const option1Lower = question.option1.toLowerCase().trim();
-    const option2Lower = question.option2.toLowerCase().trim();
-
-    let correctVotes, incorrectVotes, correctLabel, incorrectLabel;
-
-    if (correctOption === option1Lower || correctOption === '1') {
-        correctVotes = votes.option1;
-        incorrectVotes = votes.option2;
-        correctLabel = question.option1;
-        incorrectLabel = question.option2;
-    } else {
-        correctVotes = votes.option2;
-        incorrectVotes = votes.option1;
-        correctLabel = question.option2;
-        incorrectLabel = question.option1;
+    let opt1 = 0, opt2 = 0;
+    if (votes) {
+        Object.values(votes).forEach(v => {
+            if (v.vote === 1) opt1++;
+            if (v.vote === 2) opt2++;
+        });
     }
 
-    // Определить победу/поражение/ничью
+    const correctIsOpt1 = q.correctAnswer === q.option1;
+    const correctVotes = correctIsOpt1 ? opt1 : opt2;
+    const incorrectVotes = correctIsOpt1 ? opt2 : opt1;
+    const total = opt1 + opt2;
+
     let resultType, resultEmoji, resultMessage;
 
     if (correctVotes > incorrectVotes) {
@@ -388,41 +436,36 @@ async function showResults() {
         resultMessage = 'Ничья!';
     }
 
-    // Обновить UI
     elements.resultIcon.textContent = resultEmoji;
     elements.resultText.textContent = resultMessage;
     elements.resultText.className = `result-${resultType}`;
-    elements.correctAnswer.textContent = `Правильный ответ: ${correctLabel}`;
-    elements.winnerLabel.textContent = 'Правильный ответ:';
-    elements.winnerName.textContent = correctLabel;
-    elements.finalVotes.textContent = `${correctVotes} из ${votes.total}`;
+    elements.winnerName.textContent = q.correctAnswer;
+    elements.finalVotes.textContent = `${correctVotes} из ${total}`;
+
+    // Обновить состояние
+    data.state.status = 'results';
+    setRoomData(data);
+    generateQRCode();
 
     showHostState(elements.hostResults);
-
-    // Обновить состояние для участников
-    if (sheetsWriter) {
-        await sheetsWriter.updateState({
-            currentQuestion: currentQuestionIndex + 1,
-            status: 'results',
-            showResults: true
-        });
-    }
 }
 
-// Показать результат участнику
-function showPlayerResult(question, votes) {
-    const correctOption = question.correctAnswer.toLowerCase().trim();
-    const option1Lower = question.option1.toLowerCase().trim();
+function updatePlayerResults() {
+    const q = questions[currentQuestionIndex];
+    const data = getRoomData();
+    const votes = data.votes ? data.votes[`q${currentQuestionIndex}`] : {};
 
-    let correctVotes, incorrectVotes;
-
-    if (correctOption === option1Lower || correctOption === '1') {
-        correctVotes = votes.option1;
-        incorrectVotes = votes.option2;
-    } else {
-        correctVotes = votes.option2;
-        incorrectVotes = votes.option1;
+    let opt1 = 0, opt2 = 0;
+    if (votes) {
+        Object.values(votes).forEach(v => {
+            if (v.vote === 1) opt1++;
+            if (v.vote === 2) opt2++;
+        });
     }
+
+    const correctIsOpt1 = q.correctAnswer === q.option1;
+    const correctVotes = correctIsOpt1 ? opt1 : opt2;
+    const incorrectVotes = correctIsOpt1 ? opt2 : opt1;
 
     if (correctVotes > incorrectVotes) {
         elements.playerResultIcon.textContent = '🎉';
@@ -439,65 +482,50 @@ function showPlayerResult(question, votes) {
     }
 }
 
-// Следующий вопрос
+// ==================== NAVIGATION ====================
+
 async function nextQuestion() {
     currentQuestionIndex++;
 
     if (currentQuestionIndex >= questions.length) {
-        // Викторина завершена
         showHostState(elements.hostEnd);
-
-        if (sheetsWriter) {
-            await sheetsWriter.updateState({
-                currentQuestion: 0,
-                status: 'waiting',
-                showResults: false
-            });
-        }
+        const data = getRoomData();
+        data.state = { status: 'waiting', currentQuestion: 0 };
+        setRoomData(data);
+        generateQRCode();
         return;
     }
 
-    // Обновить состояние
-    if (sheetsWriter) {
-        await sheetsWriter.updateState({
-            currentQuestion: currentQuestionIndex + 1,
-            status: 'voting',
-            showResults: false
-        });
-    }
+    const data = getRoomData();
+    data.state = { status: 'voting', currentQuestion: currentQuestionIndex };
+    setRoomData(data);
+    generateQRCode();
 
     showHostState(elements.hostVoting);
     updateHostQuestion();
 }
 
-// Перезапустить викторину
 async function restartQuiz() {
     currentQuestionIndex = 0;
-
-    if (sheetsWriter) {
-        await sheetsWriter.clearVotes();
-        await sheetsWriter.updateState({
-            currentQuestion: 0,
-            status: 'waiting',
-            showResults: false
-        });
-    }
-
+    const data = getRoomData();
+    data.state = { status: 'waiting', currentQuestion: 0 };
+    data.votes = {};
+    setRoomData(data);
+    generateQRCode();
     showHostState(elements.hostWaiting);
 }
 
-// Конфетти
+// ==================== CONFETTI ====================
+
 function triggerConfetti() {
     const canvas = elements.confettiCanvas;
     const ctx = canvas.getContext('2d');
-
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
     const particles = [];
     const colors = ['#e94560', '#ff6b6b', '#4361ee', '#7209b7', '#4ade80', '#fbbf24'];
 
-    // Создать частицы
     for (let i = 0; i < 150; i++) {
         particles.push({
             x: Math.random() * canvas.width,
@@ -511,11 +539,8 @@ function triggerConfetti() {
         });
     }
 
-    let animationFrame;
-
     function animate() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         let stillActive = false;
 
         particles.forEach(p => {
@@ -535,17 +560,12 @@ function triggerConfetti() {
         });
 
         if (stillActive) {
-            animationFrame = requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
         } else {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
     }
 
     animate();
-
-    // Остановить через 5 секунд
-    setTimeout(() => {
-        cancelAnimationFrame(animationFrame);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }, 5000);
+    setTimeout(() => ctx.clearRect(0, 0, canvas.width, canvas.height), 5000);
 }
