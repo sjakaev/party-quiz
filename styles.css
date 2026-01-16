@@ -1,0 +1,430 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    color: white;
+    overflow-x: hidden;
+}
+
+#app {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.screen {
+    display: none;
+    width: 100%;
+    max-width: 800px;
+    padding: 20px;
+    text-align: center;
+}
+
+.screen.active {
+    display: block;
+}
+
+/* Общие стили кнопок */
+.btn {
+    padding: 15px 40px;
+    font-size: 18px;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.btn.primary {
+    background: linear-gradient(45deg, #e94560, #ff6b6b);
+    color: white;
+    box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+}
+
+.btn.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(233, 69, 96, 0.6);
+}
+
+.btn.secondary {
+    background: linear-gradient(45deg, #0f3460, #16213e);
+    color: white;
+    border: 2px solid #e94560;
+}
+
+.btn.secondary:hover {
+    background: linear-gradient(45deg, #16213e, #1a1a2e);
+}
+
+.btn.big {
+    padding: 20px 60px;
+    font-size: 24px;
+}
+
+/* Экран настройки */
+#setup-screen h1 {
+    font-size: 48px;
+    margin-bottom: 30px;
+}
+
+#setup-screen input {
+    width: 100%;
+    max-width: 500px;
+    padding: 15px 20px;
+    font-size: 18px;
+    border: 2px solid #e94560;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    margin: 20px 0;
+}
+
+#setup-screen input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.help-text {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 14px;
+    margin-bottom: 30px;
+}
+
+.help-text strong {
+    color: #e94560;
+}
+
+/* Экран ведущего */
+.host-state {
+    display: none;
+}
+
+.host-state.active {
+    display: block;
+}
+
+#qr-code {
+    background: white;
+    padding: 20px;
+    border-radius: 20px;
+    display: inline-block;
+    margin: 30px 0;
+}
+
+#qr-code canvas {
+    display: block;
+}
+
+.qr-hint {
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 20px;
+}
+
+.players-count {
+    font-size: 24px;
+    margin: 20px 0;
+    color: #4ade80;
+}
+
+.players-count span {
+    font-size: 36px;
+    font-weight: bold;
+}
+
+.question-number {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 20px;
+}
+
+.question-text {
+    font-size: 36px;
+    margin-bottom: 40px;
+    line-height: 1.4;
+}
+
+/* Прогресс-бар голосования */
+.voting-bar {
+    max-width: 600px;
+    margin: 0 auto 30px;
+}
+
+.bar-container {
+    height: 60px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 30px;
+    overflow: hidden;
+    display: flex;
+    position: relative;
+}
+
+.bar-fill {
+    height: 100%;
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.bar-fill.option1 {
+    background: linear-gradient(90deg, #e94560, #ff6b6b);
+}
+
+.bar-fill.option2 {
+    background: linear-gradient(90deg, #4361ee, #7209b7);
+}
+
+.bar-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.bar-counts {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5px;
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.total-votes {
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 30px;
+}
+
+/* Экран результатов */
+#host-results {
+    position: relative;
+}
+
+#result-content {
+    position: relative;
+    z-index: 10;
+}
+
+#result-icon {
+    font-size: 120px;
+    margin-bottom: 20px;
+}
+
+#result-text {
+    font-size: 48px;
+    margin-bottom: 20px;
+}
+
+#correct-answer {
+    font-size: 28px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 30px;
+}
+
+.final-stats {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+    margin-bottom: 40px;
+}
+
+.stat {
+    text-align: center;
+}
+
+.stat-label {
+    display: block;
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #4ade80;
+}
+
+#confetti-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* Экран участника */
+.player-state {
+    display: none;
+}
+
+.player-state.active {
+    display: block;
+}
+
+#player-screen h1 {
+    font-size: 32px;
+    margin-bottom: 20px;
+}
+
+#player-screen h2 {
+    font-size: 24px;
+    margin-bottom: 40px;
+    line-height: 1.4;
+}
+
+.vote-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.vote-btn {
+    padding: 30px 20px;
+    font-size: 24px;
+    border-radius: 20px;
+    width: 100%;
+}
+
+.vote-btn.option1 {
+    background: linear-gradient(45deg, #e94560, #ff6b6b);
+}
+
+.vote-btn.option2 {
+    background: linear-gradient(45deg, #4361ee, #7209b7);
+}
+
+.vote-btn:active {
+    transform: scale(0.95);
+}
+
+#your-vote {
+    font-weight: bold;
+    color: #4ade80;
+}
+
+#player-result-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+}
+
+/* Лоадер */
+.loader {
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #e94560;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 30px auto;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-10px);
+    }
+    75% {
+        transform: translateX(10px);
+    }
+}
+
+.shake {
+    animation: shake 0.5s ease;
+}
+
+/* Результаты - цвета */
+.result-win {
+    color: #4ade80;
+}
+
+.result-lose {
+    color: #ef4444;
+}
+
+.result-draw {
+    color: #fbbf24;
+}
+
+/* Адаптивность */
+@media (max-width: 600px) {
+    .question-text {
+        font-size: 24px;
+    }
+
+    .btn.big {
+        padding: 15px 40px;
+        font-size: 18px;
+    }
+
+    #result-icon {
+        font-size: 80px;
+    }
+
+    #result-text {
+        font-size: 32px;
+    }
+
+    .final-stats {
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .bar-labels {
+        font-size: 18px;
+    }
+}

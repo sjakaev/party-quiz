@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Party Quiz - Викторина для вечеринки</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Экран настройки -->
+        <div id="setup-screen" class="screen active">
+            <h1>🎉 Party Quiz</h1>
+            <p>Введите ID вашей Google таблицы:</p>
+            <input type="text" id="sheet-id" placeholder="ID таблицы из URL">
+            <div class="help-text">
+                ID находится в URL таблицы:<br>
+                docs.google.com/spreadsheets/d/<strong>ВАШ_ID</strong>/edit
+            </div>
+            <button id="start-host" class="btn primary">Режим ведущего (проектор)</button>
+            <button id="start-player" class="btn secondary">Режим участника (телефон)</button>
+        </div>
+
+        <!-- Экран ведущего -->
+        <div id="host-screen" class="screen">
+            <div id="host-waiting" class="host-state active">
+                <h1>Ожидание участников</h1>
+                <div id="qr-code"></div>
+                <p class="qr-hint">Отсканируйте QR-код для участия</p>
+                <div class="players-count">
+                    Подключено: <span id="players-online">0</span>
+                </div>
+                <button id="start-quiz" class="btn primary big">Начать викторину</button>
+            </div>
+
+            <div id="host-voting" class="host-state">
+                <div class="question-number">Вопрос <span id="current-q">1</span> из <span id="total-q">10</span></div>
+                <h1 id="host-question" class="question-text">Загрузка вопроса...</h1>
+                <div class="voting-bar">
+                    <div class="bar-container">
+                        <div class="bar-fill option1" id="bar-option1"></div>
+                        <div class="bar-fill option2" id="bar-option2"></div>
+                    </div>
+                    <div class="bar-labels">
+                        <span id="label-option1">Вариант 1</span>
+                        <span id="label-option2">Вариант 2</span>
+                    </div>
+                    <div class="bar-counts">
+                        <span id="count-option1">0</span>
+                        <span id="count-option2">0</span>
+                    </div>
+                </div>
+                <div class="total-votes">
+                    Всего голосов: <span id="total-votes">0</span>
+                </div>
+                <button id="show-results" class="btn primary">Показать результат</button>
+            </div>
+
+            <div id="host-results" class="host-state">
+                <div id="result-content">
+                    <div id="result-icon"></div>
+                    <h1 id="result-text"></h1>
+                    <div id="correct-answer"></div>
+                    <div class="final-stats">
+                        <div class="stat">
+                            <span class="stat-label" id="winner-label">Победитель:</span>
+                            <span class="stat-value" id="winner-name"></span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Голоса:</span>
+                            <span class="stat-value" id="final-votes"></span>
+                        </div>
+                    </div>
+                </div>
+                <canvas id="confetti-canvas"></canvas>
+                <button id="next-question" class="btn primary big">Следующий вопрос</button>
+            </div>
+
+            <div id="host-end" class="host-state">
+                <h1>🎊 Викторина завершена!</h1>
+                <p>Спасибо за участие!</p>
+                <button id="restart-quiz" class="btn primary">Начать заново</button>
+            </div>
+        </div>
+
+        <!-- Экран участника -->
+        <div id="player-screen" class="screen">
+            <div id="player-waiting" class="player-state active">
+                <h1>📱 Вы подключены!</h1>
+                <p>Ожидайте начала викторины...</p>
+                <div class="loader"></div>
+            </div>
+
+            <div id="player-voting" class="player-state">
+                <h2 id="player-question">Вопрос загружается...</h2>
+                <div class="vote-buttons">
+                    <button id="vote-option1" class="btn vote-btn option1">Вариант 1</button>
+                    <button id="vote-option2" class="btn vote-btn option2">Вариант 2</button>
+                </div>
+            </div>
+
+            <div id="player-voted" class="player-state">
+                <h1>✓ Голос принят!</h1>
+                <p>Вы выбрали: <span id="your-vote"></span></p>
+                <p>Ожидайте результаты...</p>
+            </div>
+
+            <div id="player-results" class="player-state">
+                <div id="player-result-icon"></div>
+                <h1 id="player-result-text"></h1>
+                <p>Ожидайте следующий вопрос...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="sheets-api.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
