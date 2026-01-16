@@ -1,5 +1,4 @@
-// Google Sheets API через публичный доступ
-// Таблица должна быть опубликована: Файл -> Поделиться -> Опубликовать в интернете
+// Google Sheets API через публичный доступ + Web App
 
 class SheetsAPI {
     constructor(sheetId) {
@@ -54,55 +53,54 @@ class SheetsAPI {
         const data = await this.query(CONFIG.SHEETS.QUESTIONS);
         return data.map((row, index) => ({
             id: index + 1,
-            question: row['Вопрос'] || row['question'] || row['A'],
-            option1: row['Вариант1'] || row['option1'] || row['B'],
-            option2: row['Вариант2'] || row['option2'] || row['C'],
-            correctAnswer: row['Ответ'] || row['answer'] || row['D']
-        })).filter(q => q.question); // Убираем пустые строки
+            question: row['Вопрос'] || row['question'] || row['A'] || Object.values(row)[0],
+            option1: row['Вариант1'] || row['option1'] || row['B'] || Object.values(row)[1],
+            option2: row['Вариант2'] || row['option2'] || row['C'] || Object.values(row)[2],
+            correctAnswer: row['Ответ'] || row['answer'] || row['D'] || Object.values(row)[3]
+        })).filter(q => q.question && q.question !== 'Вопрос');
     }
 
-    // Получить состояние игры
+    // Получить состояние игры через Web App
     async getState() {
+        if (!CONFIG.WEB_APP_URL) {
+            return { currentQuestion: 0, status: 'waiting', showResults: false };
+        }
+
         try {
-            const data = await this.query(CONFIG.SHEETS.STATE);
-            if (data.length === 0) {
-                return {
-                    currentQuestion: 0,
-                    status: 'waiting', // waiting, voting, results
-                    showResults: false
-                };
-            }
-            const row = data[0];
+            const response = await fetch(CONFIG.WEB_APP_URL + '?action=getState', {
+                method: 'GET'
+            });
+            const data = await response.json();
             return {
-                currentQuestion: parseInt(row['currentQuestion'] || row['A'] || 0),
-                status: row['status'] || row['B'] || 'waiting',
-                showResults: (row['showResults'] || row['C'] || 'false') === 'true'
+                currentQuestion: parseInt(data.currentQuestion) || 0,
+                status: data.status || 'waiting',
+                showResults: data.showResults === true || data.showResults === 'true'
             };
         } catch (e) {
-            return {
-                currentQuestion: 0,
-                status: 'waiting',
-                showResults: false
-            };
+            console.error('Ошибка получения состояния:', e);
+            return { currentQuestion: 0, status: 'waiting', showResults: false };
         }
     }
 
-    // Получить голоса для текущего вопроса
+    // Получить голоса через Web App
     async getVotes(questionId) {
-        try {
-            const data = await this.query(CONFIG.SHEETS.VOTES);
-            const votes = data.filter(row => {
-                const qId = parseInt(row['questionId'] || row['A'] || 0);
-                return qId === questionId;
-            });
+        if (!CONFIG.WEB_APP_URL) {
+            return { option1: 0, option2: 0, total: 0, voters: [] };
+        }
 
+        try {
+            const response = await fetch(CONFIG.WEB_APP_URL + '?action=getVotes&questionId=' + questionId, {
+                method: 'GET'
+            });
+            const data = await response.json();
             return {
-                option1: votes.filter(v => (v['vote'] || v['B']) === '1').length,
-                option2: votes.filter(v => (v['vote'] || v['B']) === '2').length,
-                total: votes.length,
-                voters: votes.map(v => v['sessionId'] || v['C'])
+                option1: parseInt(data.option1) || 0,
+                option2: parseInt(data.option2) || 0,
+                total: parseInt(data.total) || 0,
+                voters: data.voters || []
             };
         } catch (e) {
+            console.error('Ошибка получения голосов:', e);
             return { option1: 0, option2: 0, total: 0, voters: [] };
         }
     }
@@ -115,8 +113,6 @@ class SheetsAPI {
 }
 
 // Для записи данных используем Google Apps Script Web App
-// Это нужно настроить отдельно в Google Sheets
-
 class SheetsWriter {
     constructor(webAppUrl) {
         this.webAppUrl = webAppUrl;
@@ -129,7 +125,7 @@ class SheetsWriter {
         }
 
         try {
-            await fetch(this.webAppUrl, {
+            const response = await fetch(this.webAppUrl, {
                 method: 'POST',
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
@@ -152,7 +148,7 @@ class SheetsWriter {
         }
 
         try {
-            await fetch(this.webAppUrl, {
+            const response = await fetch(this.webAppUrl, {
                 method: 'POST',
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
@@ -174,7 +170,7 @@ class SheetsWriter {
         if (!this.webAppUrl) return false;
 
         try {
-            await fetch(this.webAppUrl, {
+            const response = await fetch(this.webAppUrl, {
                 method: 'POST',
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },

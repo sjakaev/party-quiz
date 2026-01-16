@@ -1,32 +1,47 @@
 /**
  * Google Apps Script для Party Quiz
  *
- * ИНСТРУКЦИЯ ПО УСТАНОВКЕ:
- * 1. Откройте вашу Google таблицу
- * 2. Меню: Расширения -> Apps Script
- * 3. Удалите весь код и вставьте этот файл
- * 4. Сохраните (Ctrl+S)
- * 5. Нажмите "Развернуть" -> "Новое развертывание"
- * 6. Тип: "Веб-приложение"
- * 7. Выполнять как: "Я"
- * 8. Доступ: "Все"
- * 9. Скопируйте URL развертывания
- * 10. Вставьте URL в ячейку A1 листа "Config"
+ * ВАЖНО: После изменения кода нужно создать НОВОЕ развертывание!
+ * 1. Нажмите "Развернуть" -> "Новое развертывание"
+ * 2. Тип: "Веб-приложение"
+ * 3. Выполнять как: "Я"
+ * 4. Доступ: "Все"
+ * 5. Скопируйте НОВЫЙ URL и обновите его в config.js
  */
 
-// Обработка POST запросов
+// Глобальное хранилище состояния (в свойствах скрипта)
+const PROPS = PropertiesService.getScriptProperties();
+
+// Обработка GET запросов (чтение данных)
+function doGet(e) {
+  const action = e.parameter.action;
+
+  try {
+    switch (action) {
+      case 'getState':
+        return getState();
+      case 'getVotes':
+        return getVotes(e.parameter.questionId);
+      default:
+        return createResponse({ status: 'Party Quiz API is running!' });
+    }
+  } catch (error) {
+    return createResponse({ error: error.message });
+  }
+}
+
+// Обработка POST запросов (запись данных)
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
 
     switch (data.action) {
       case 'updateState':
-        return updateState(ss, data);
+        return updateState(data);
       case 'addVote':
-        return addVote(ss, data);
+        return addVote(data);
       case 'clearVotes':
-        return clearVotes(ss);
+        return clearVotes();
       default:
         return createResponse({ error: 'Unknown action' });
     }
@@ -35,120 +50,90 @@ function doPost(e) {
   }
 }
 
-// Обработка GET запросов (для тестирования)
-function doGet(e) {
-  return createResponse({ status: 'Party Quiz API is running!' });
+// Получить состояние игры
+function getState() {
+  const state = {
+    currentQuestion: parseInt(PROPS.getProperty('currentQuestion')) || 0,
+    status: PROPS.getProperty('status') || 'waiting',
+    showResults: PROPS.getProperty('showResults') === 'true'
+  };
+  return createResponse(state);
 }
 
 // Обновить состояние игры
-function updateState(ss, data) {
-  let stateSheet = ss.getSheetByName('State');
-
-  // Создать лист если не существует
-  if (!stateSheet) {
-    stateSheet = ss.insertSheet('State');
-    stateSheet.getRange('A1:C1').setValues([['currentQuestion', 'status', 'showResults']]);
-  }
-
-  // Записать состояние
-  stateSheet.getRange('A2:C2').setValues([
-    [data.currentQuestion || 0, data.status || 'waiting', data.showResults || false]
-  ]);
-
+function updateState(data) {
+  PROPS.setProperty('currentQuestion', String(data.currentQuestion || 0));
+  PROPS.setProperty('status', data.status || 'waiting');
+  PROPS.setProperty('showResults', String(data.showResults || false));
   return createResponse({ success: true });
 }
 
-// Добавить голос
-function addVote(ss, data) {
-  let votesSheet = ss.getSheetByName('Votes');
+// Получить голоса для вопроса
+function getVotes(questionId) {
+  const votesJson = PROPS.getProperty('votes') || '{}';
+  const allVotes = JSON.parse(votesJson);
+  const questionVotes = allVotes[questionId] || [];
 
-  // Создать лист если не существует
-  if (!votesSheet) {
-    votesSheet = ss.insertSheet('Votes');
-    votesSheet.getRange('A1:D1').setValues([['questionId', 'vote', 'sessionId', 'timestamp']]);
+  let option1 = 0;
+  let option2 = 0;
+  const voters = [];
+
+  questionVotes.forEach(v => {
+    if (v.vote === 1 || v.vote === '1') option1++;
+    if (v.vote === 2 || v.vote === '2') option2++;
+    voters.push(v.sessionId);
+  });
+
+  return createResponse({
+    option1: option1,
+    option2: option2,
+    total: questionVotes.length,
+    voters: voters
+  });
+}
+
+// Добавить голос
+function addVote(data) {
+  const votesJson = PROPS.getProperty('votes') || '{}';
+  const allVotes = JSON.parse(votesJson);
+
+  const questionId = String(data.questionId);
+  if (!allVotes[questionId]) {
+    allVotes[questionId] = [];
   }
 
-  // Проверить, не голосовал ли уже этот участник за этот вопрос
-  const existingData = votesSheet.getDataRange().getValues();
-  for (let i = 1; i < existingData.length; i++) {
-    if (existingData[i][0] == data.questionId && existingData[i][2] == data.sessionId) {
-      return createResponse({ success: false, reason: 'Already voted' });
-    }
+  // Проверить, не голосовал ли уже
+  const existingVote = allVotes[questionId].find(v => v.sessionId === data.sessionId);
+  if (existingVote) {
+    return createResponse({ success: false, reason: 'Already voted' });
   }
 
   // Добавить голос
-  const lastRow = votesSheet.getLastRow() + 1;
-  votesSheet.getRange(lastRow, 1, 1, 4).setValues([
-    [data.questionId, data.vote, data.sessionId, new Date().toISOString()]
-  ]);
+  allVotes[questionId].push({
+    vote: data.vote,
+    sessionId: data.sessionId,
+    timestamp: new Date().toISOString()
+  });
 
+  PROPS.setProperty('votes', JSON.stringify(allVotes));
   return createResponse({ success: true });
 }
 
 // Очистить все голоса
-function clearVotes(ss) {
-  let votesSheet = ss.getSheetByName('Votes');
-
-  if (votesSheet) {
-    const lastRow = votesSheet.getLastRow();
-    if (lastRow > 1) {
-      votesSheet.deleteRows(2, lastRow - 1);
-    }
-  }
-
+function clearVotes() {
+  PROPS.setProperty('votes', '{}');
   return createResponse({ success: true });
 }
 
-// Создать JSON ответ
+// Создать JSON ответ с CORS заголовками
 function createResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-/**
- * Функция для первоначальной настройки таблицы
- * Запустите её один раз из редактора скриптов
- */
-function setupSpreadsheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  // Создать лист Questions если не существует
-  let questionsSheet = ss.getSheetByName('Questions');
-  if (!questionsSheet) {
-    questionsSheet = ss.insertSheet('Questions');
-    questionsSheet.getRange('A1:D1').setValues([['Вопрос', 'Вариант1', 'Вариант2', 'Ответ']]);
-
-    // Добавить примеры вопросов
-    questionsSheet.getRange('A2:D4').setValues([
-      ['Никогда не был на море', 'Антон', 'Вася', 'Антон'],
-      ['Боится пауков', 'Антон', 'Вася', 'Вася'],
-      ['Умеет играть на гитаре', 'Антон', 'Вася', 'Антон']
-    ]);
-  }
-
-  // Создать лист State
-  let stateSheet = ss.getSheetByName('State');
-  if (!stateSheet) {
-    stateSheet = ss.insertSheet('State');
-    stateSheet.getRange('A1:C1').setValues([['currentQuestion', 'status', 'showResults']]);
-    stateSheet.getRange('A2:C2').setValues([[0, 'waiting', false]]);
-  }
-
-  // Создать лист Votes
-  let votesSheet = ss.getSheetByName('Votes');
-  if (!votesSheet) {
-    votesSheet = ss.insertSheet('Votes');
-    votesSheet.getRange('A1:D1').setValues([['questionId', 'vote', 'sessionId', 'timestamp']]);
-  }
-
-  // Создать лист Config
-  let configSheet = ss.getSheetByName('Config');
-  if (!configSheet) {
-    configSheet = ss.insertSheet('Config');
-    configSheet.getRange('A1').setValue('webAppUrl');
-    configSheet.getRange('A2').setValue('ВСТАВЬТЕ_СЮДА_URL_РАЗВЕРТЫВАНИЯ');
-  }
-
-  SpreadsheetApp.getUi().alert('Таблица настроена! Теперь разверните веб-приложение и вставьте URL в ячейку A2 листа Config.');
+// Сброс всего состояния (можно вызвать вручную)
+function resetAll() {
+  PROPS.deleteAllProperties();
+  Logger.log('Все данные сброшены');
 }
