@@ -93,10 +93,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Если есть данные в URL - загрузить их
     if (dataFromUrl) {
         try {
-            const decoded = JSON.parse(atob(dataFromUrl));
+            const decoded = JSON.parse(decodeURIComponent(escape(atob(dataFromUrl))));
             localStorage.setItem(`quiz_${decoded.roomCode}`, JSON.stringify(decoded));
         } catch (e) {
-            console.error('Failed to decode URL data');
+            console.error('Failed to decode URL data', e);
         }
     }
 
@@ -230,9 +230,10 @@ async function saveAndStart() {
 }
 
 function generateQRCode() {
-    // Создаём URL с данными комнаты закодированными в base64
+    // Создаём URL с данными комнаты закодированными в base64 (с поддержкой UTF-8)
     const roomData = getRoomData();
-    const encodedData = btoa(JSON.stringify(roomData));
+    const jsonStr = JSON.stringify(roomData);
+    const encodedData = btoa(unescape(encodeURIComponent(jsonStr)));
     const playerUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}&data=${encodedData}`;
 
     elements.qrCode.innerHTML = '';
