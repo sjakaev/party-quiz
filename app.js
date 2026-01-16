@@ -90,19 +90,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const roomFromUrl = urlParams.get('room');
     const dataFromUrl = urlParams.get('data');
 
+    // Если есть код комнаты в URL - установить глобальную переменную
+    if (roomFromUrl) {
+        roomCode = roomFromUrl.toLowerCase();
+        elements.roomCodeInput.value = roomCode;
+    }
+
     // Если есть данные в URL - загрузить их
     if (dataFromUrl) {
         try {
             const decoded = JSON.parse(decodeURIComponent(escape(atob(dataFromUrl))));
-            localStorage.setItem(`quiz_${decoded.roomCode}`, JSON.stringify(decoded));
+            // Используем roomCode из URL или из decoded данных
+            const targetRoom = roomCode || decoded.roomCode;
+            localStorage.setItem(`quiz_${targetRoom}`, JSON.stringify(decoded));
+            console.log('Room data saved for:', targetRoom);
         } catch (e) {
             console.error('Failed to decode URL data', e);
         }
     }
 
     if (roomFromUrl) {
-        elements.roomCodeInput.value = roomFromUrl;
-        setTimeout(() => startAsPlayer(), 500);
+        // Небольшая задержка чтобы localStorage точно записался
+        setTimeout(() => startAsPlayer(), 100);
     }
 
     // Event listeners
