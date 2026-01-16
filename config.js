@@ -4,7 +4,7 @@ const CONFIG = {
     SHEET_ID: '15zS8WOxQl0xeDPO1m0VM2wJEj32Qje6eGCtmVOQUoYA',
 
     // URL Google Apps Script Web App
-    WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbx3dZhO8WIJHf2QjZWLM0LcMxEz4bHm3fALb5WwlCaoxG0xof6HpAe6D5gU1yX3TXdd/exec',
+    WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbyxOKlFw4ZebLZpYRi4c7DhQlDCmh_OMEnNkOBRO-j7qSOj-f7JnZ3QaroFcBkOacEaDg/exec',
 
     // Названия листов в таблице
     SHEETS: {
